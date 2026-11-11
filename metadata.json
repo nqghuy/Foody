@@ -1,0 +1,6 @@
+{
+  "name": "Hà Nội Vị Ký - Review Ẩm Thực",
+  "description": "Nền tảng cẩm nang và review ẩm thực Hà Nội theo phong cách tạp chí biên tập trang nhã. Tìm kiếm quán ăn theo quận, xem và viết review chi tiết kèm hình ảnh, lưu quán yêu thích.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
