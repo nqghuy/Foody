@@ -10,6 +10,7 @@ import { Toast, ToastMessage } from './components/Toast';
 import { FoodMap } from './components/FoodMap';
 import { INITIAL_RESTAURANTS, INITIAL_REVIEWS } from './data/hanoiRestaurants';
 import { Restaurant, Review, Category, District, PriceLevel } from './types/foody';
+import { loadCommunity, saveBookmark, saveReview, voteHelpful } from './lib/communityApi';
 import { UtensilsCrossed, Compass, Heart, Search, Sparkles, Map, LayoutGrid } from 'lucide-react';
 
 const CATEGORY_LIST: Category[] = [
@@ -24,34 +25,11 @@ const CATEGORY_LIST: Category[] = [
   'Chè & Tráng miệng',
 ];
 
-const LOCAL_STORAGE_REVIEWS_KEY = 'hanoi_viki_reviews_v1';
-const LOCAL_STORAGE_BOOKMARKS_KEY = 'hanoi_viki_bookmarks_v1';
-
 export default function App() {
   // 1. Data State & Persistence
   const [restaurants, setRestaurants] = useState<Restaurant[]>(INITIAL_RESTAURANTS);
-  const [reviews, setReviews] = useState<Review[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_REVIEWS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return [...parsed, ...INITIAL_REVIEWS.filter((initRev) => !parsed.some((p: Review) => p.id === initRev.id))];
-      }
-    } catch (e) {
-      console.error('Error loading reviews from localStorage', e);
-    }
-    return INITIAL_REVIEWS;
-  });
-
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_BOOKMARKS_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Error loading bookmarks from localStorage', e);
-    }
-    return ['pho-thin-lo-duc', 'cafe-giang-yen-the']; // Default favorites
-  });
+  const [reviews, setReviews] = useState<Review[]>(INITIAL_REVIEWS);
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(['pho-thin-lo-duc', 'cafe-giang-yen-the']);
 
   // 2. Filter & Search State
   const [activeTab, setActiveTab] = useState<'catalog' | 'map'>('catalog');
@@ -69,23 +47,18 @@ export default function App() {
   const [isBookmarksDrawerOpen, setIsBookmarksDrawerOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  // Sync Bookmarks to LocalStorage
+  // Load community data shared through the backend.
   useEffect(() => {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_BOOKMARKS_KEY, JSON.stringify(bookmarkedIds));
-    } catch (e) {
-      console.error('Error saving bookmarks', e);
-    }
-  }, [bookmarkedIds]);
-
-  // Sync User Reviews to LocalStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_REVIEWS_KEY, JSON.stringify(reviews));
-    } catch (e) {
-      console.error('Error saving reviews', e);
-    }
-  }, [reviews]);
+    let active = true;
+    loadCommunity()
+      .then(({ reviews: savedReviews, bookmarkedIds: savedBookmarks }) => {
+        if (!active) return;
+        setReviews([...savedReviews, ...INITIAL_REVIEWS.filter((initial) => !savedReviews.some((saved) => saved.id === initial.id))]);
+        setBookmarkedIds(savedBookmarks);
+      })
+      .catch((error) => console.error('Could not load shared community data', error));
+    return () => { active = false; };
+  }, []);
 
   // Filter & Search Logic
   const filteredRestaurants = useMemo(() => {
@@ -145,11 +118,18 @@ export default function App() {
   };
 
   // Toggle Bookmark Handler
-  const handleToggleBookmark = (restaurantId: string, e?: React.MouseEvent) => {
+  const handleToggleBookmark = async (restaurantId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const isBookmarked = bookmarkedIds.includes(restaurantId);
     const target = restaurants.find((r) => r.id === restaurantId);
 
+    try {
+      await saveBookmark(restaurantId, !isBookmarked);
+    } catch (error) {
+      setToast({ id: Date.now().toString(), type: 'info', message: 'Không lưu được yêu thích. Kiểm tra kết nối backend.' });
+      console.error('Could not save bookmark', error);
+      return;
+    }
     if (isBookmarked) {
       setBookmarkedIds((prev) => prev.filter((id) => id !== restaurantId));
       setToast({
@@ -174,13 +154,15 @@ export default function App() {
   };
 
   // Submit Review Handler
-  const handleAddReview = (reviewData: Omit<Review, 'id' | 'createdAt' | 'helpfulCount'>) => {
-    const newReview: Review = {
-      ...reviewData,
-      id: `rev-${Date.now()}`,
-      createdAt: new Date().toISOString().split('T')[0],
-      helpfulCount: 0,
-    };
+  const handleAddReview = async (reviewData: Omit<Review, 'id' | 'createdAt' | 'helpfulCount'>) => {
+    let newReview: Review;
+    try {
+      newReview = await saveReview(reviewData);
+    } catch (error) {
+      setToast({ id: Date.now().toString(), type: 'info', message: `Không đăng được review. ${error instanceof Error ? error.message : 'Lỗi không xác định.'}` });
+      console.error('Could not save review', error);
+      return;
+    }
 
     // Update reviews list
     const updatedReviews = [newReview, ...reviews];
@@ -232,15 +214,15 @@ export default function App() {
   };
 
   // Helpful Vote Handler
-  const handleHelpfulVote = (reviewId: string) => {
-    setReviews((prev) =>
-      prev.map((r) => {
-        if (r.id === reviewId) {
-          return { ...r, helpfulCount: r.helpfulCount + 1 };
-        }
-        return r;
-      })
-    );
+  const handleHelpfulVote = async (reviewId: string) => {
+    try {
+      const { helpfulCount } = await voteHelpful(reviewId);
+      setReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, helpfulCount } : r));
+    } catch (error) {
+      setToast({ id: Date.now().toString(), type: 'info', message: 'Không ghi nhận được lượt hữu ích.' });
+      console.error('Could not save helpful vote', error);
+      return;
+    }
     setToast({
       id: Date.now().toString(),
       type: 'info',

@@ -1,20 +1,16 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Hà Nội Vị Ký
 
-# Run and deploy your AI Studio app
+React/Vite frontend with an Express API and a shared Supabase PostgreSQL database.
 
-This contains everything you need to run your app locally.
+## Connect a Supabase project
 
-View your app in AI Studio: https://ai.studio/apps/09bbf52c-b7d4-412c-bcb3-180a152ac71d
+1. In the repository root (`KHDV/.env`), put the database password into `DATABASE_URL`. The file is already provided from `.env.example`; `src/.env` is not read by the backend. Use the **Shared pooler, Session mode** connection string for local development. If the password contains reserved characters, percent-encode them in the URI.
+2. Install dependencies with `npm install`.
+3. Run `npm run db:seed` once. It creates the tables from `server/schema.sql` and adds the sample reviews. You can also run `npm run db:migrate` separately.
+4. Start both the API and frontend with `npm run dev`; open `http://localhost:3000`.
 
-## Run Locally
+Each developer uses their own local `.env` file with the same Supabase connection string. `.env` is ignored by Git. Do not put the database password in frontend variables such as `VITE_*`.
 
-**Prerequisites:**  Node.js
+The API stores reviews, helpful counts, and bookmarks. Bookmarks are keyed by a browser-generated visitor ID, so they persist for that browser without requiring user accounts. Restaurant catalog data remains in `src/data/hanoiRestaurants.ts` for now.
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+The backend is a simple shared development setup. It does not include accounts, moderation, or rate limiting yet; add those before exposing write endpoints publicly.
